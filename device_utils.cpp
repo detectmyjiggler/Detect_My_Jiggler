@@ -342,15 +342,28 @@ bool IsTouchpadDevice(HANDLE deviceHandle, const RAWINPUT* rawMouse, MouseDevice
     // Check if this is an internal (non-USB) HID device by looking for
     // absence of VID_/PID_ in the path. Internal I2C/ACPI devices that
     // register as mice are almost always touchpads.
+    // IMPORTANT: Bluetooth mice must NOT be caught by this check.
+    //   - Bluetooth Classic HID uses "VID&" format (e.g. VID&02046D), not "VID_"
+    //   - Bluetooth LE HID uses "BTHLE" paths with no VID_ at all
+    // Both cases would be incorrectly flagged as internal touchpads without
+    // the explicit Bluetooth path exclusion and the VID& check below.
     bool internalDeviceHint = false;
     if (!nameUtf8.empty()) {
         std::string upperPath = nameUtf8;
         std::transform(upperPath.begin(), upperPath.end(), upperPath.begin(),
                        [](unsigned char c) { return (char)std::toupper(c); });
-        bool hasVidPid = upperPath.find("VID_") != std::string::npos;
+        // Accept VID in all formats: VID_ (USB), VID& (Bluetooth Classic), VID# (other)
+        bool hasVidPid = upperPath.find("VID_") != std::string::npos ||
+                         upperPath.find("VID&") != std::string::npos ||
+                         upperPath.find("VID#") != std::string::npos;
         bool isHidDevice = upperPath.find("HID") != std::string::npos;
-        if (isHidDevice && !hasVidPid) {
-            // HID device without USB VID/PID is likely an internal I2C/ACPI touchpad
+        // Bluetooth device paths contain BTH or BTHLE — never treat them as
+        // internal touchpads regardless of whether VID is present in the path.
+        bool isBluetooth = upperPath.find("BTHLE") != std::string::npos ||
+                           upperPath.find("BTH\\") != std::string::npos ||
+                           upperPath.find("BLUETOOTH") != std::string::npos;
+        if (isHidDevice && !hasVidPid && !isBluetooth) {
+            // HID device without any VID/PID and not Bluetooth = internal I2C/ACPI touchpad
             internalDeviceHint = true;
         }
     }
