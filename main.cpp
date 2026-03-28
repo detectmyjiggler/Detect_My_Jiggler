@@ -521,8 +521,6 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
             return 0;
         }
         case WM_INPUT: {
-            if (detectionPaused || stopDetection.load()) break;
-
             UINT dwSize;
             GetRawInputData((HRAWINPUT)lParam, RID_INPUT, NULL, &dwSize, sizeof(RAWINPUTHEADER));
             LPBYTE lpb = new BYTE[dwSize];
@@ -537,6 +535,20 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
             }
 
             RAWINPUT* raw = (RAWINPUT*)lpb;
+
+            // Forward mouse movement to live chart regardless of detection state
+            if (raw->header.dwType == RIM_TYPEMOUSE) {
+                LONG dx = raw->data.mouse.lLastX;
+                LONG dy = raw->data.mouse.lLastY;
+                if ((dx != 0 || dy != 0) && IsLiveChartActive()) {
+                    LiveChartRecordMovement(raw->header.hDevice, dx, dy);
+                }
+            }
+
+            if (detectionPaused || stopDetection.load()) {
+                delete[] lpb;
+                break;
+            }
 
             if (raw->header.dwType == RIM_TYPEMOUSE) {
                 HANDLE deviceHandle = raw->header.hDevice;
@@ -682,11 +694,6 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
                             const size_t maxHistory = 200;
                             while (mv.size() > maxHistory) {
                                 mv.pop_front();
-                            }
-
-                            // Forward to live chart if it is open and recording
-                            if (IsLiveChartActive()) {
-                                LiveChartRecordMovement(deviceHandle, dx, dy);
                             }
                         }
                     }
