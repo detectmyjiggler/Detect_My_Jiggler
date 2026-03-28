@@ -17,7 +17,7 @@ RAWINPUTDEVICE Rid[2];
 int mouseCount = 0;
 bool detectionPaused = false;
 bool popupShown = false;
-HWND hwndMain, hwndMouseCount, hwndExitButton, hwndStatus;
+HWND hwndMain, hwndMouseCount, hwndExitButton, hwndStatus, hwndLiveChartButton;
 HWND hwndHeader, hwndDevicesGroup, hwndStatusGroup, hwndListView;
 HWND hwndFooterText, hwndLink, hwndTagline;
 std::vector<HWND> hwndMouseBoxes;

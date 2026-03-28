@@ -135,20 +135,20 @@ LRESULT CALLBACK CustomPopupProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPa
             // Message
             HWND hwndMsg = CreateWindowEx(0, "STATIC", DETECTION_INFO_MESSAGE,
                 WS_CHILD | WS_VISIBLE,
-                100, 110, 360, 130, hwnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(CUSTOM_POPUP_MSG_ID)), NULL, NULL);
+                100, 110, 360, 155, hwnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(CUSTOM_POPUP_MSG_ID)), NULL, NULL);
             SendMessage(hwndMsg, WM_SETFONT, (WPARAM)hTextFont, TRUE);
 
-            // OK Button
-            HWND hwndOK = CreateWindowEx(0, "BUTTON", "OK",
+            // View Report Button - opens detection report on detectmyjiggler.com
+            HWND hwndOK = CreateWindowEx(0, "BUTTON", "View Report",
                 WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON | BS_DEFPUSHBUTTON,
-                100, 250, 180, 35, hwnd, (HMENU)IDOK, NULL, NULL);
+                100, 275, 180, 35, hwnd, (HMENU)IDOK, NULL, NULL);
             SendMessage(hwndOK, WM_SETFONT, (WPARAM)hTextFont, TRUE);
             SetWindowTheme(hwndOK, L"Explorer", nullptr);
 
-            // Cancel Button
-            HWND hwndCancel = CreateWindowEx(0, "BUTTON", "Cancel",
+            // Dismiss Button
+            HWND hwndCancel = CreateWindowEx(0, "BUTTON", "Dismiss",
                 WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
-                290, 250, 120, 35, hwnd, (HMENU)IDCANCEL, NULL, NULL);
+                290, 275, 120, 35, hwnd, (HMENU)IDCANCEL, NULL, NULL);
             SendMessage(hwndCancel, WM_SETFONT, (WPARAM)hTextFont, TRUE);
             SetWindowTheme(hwndCancel, L"Explorer", nullptr);
             
@@ -217,7 +217,7 @@ int ShowCustomJigglerPopup(HWND parent) {
         "CustomJigglerPopup",
         "Mouse Jiggler Detection",
         WS_POPUP | WS_CAPTION | WS_SYSMENU,
-        CW_USEDEFAULT, CW_USEDEFAULT, 500, 340,
+        CW_USEDEFAULT, CW_USEDEFAULT, 500, 370,
         parent, NULL, GetModuleHandle(NULL), NULL);
     
     if (!hwndPopup) return IDCANCEL;
@@ -443,7 +443,7 @@ LRESULT CALLBACK CalibrationPopupProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARA
             // OK Button
             HWND hwndOK = CreateWindowEx(0, "BUTTON", "OK",
                 WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON | BS_DEFPUSHBUTTON,
-                150, 136, 200, 40, hwnd, (HMENU)IDOK, NULL, NULL);
+                202, 140, 90, 28, hwnd, (HMENU)IDOK, NULL, NULL);
             SendMessage(hwndOK, WM_SETFONT, (WPARAM)hTextFont, TRUE);
             SetWindowTheme(hwndOK, L"Explorer", nullptr);
 

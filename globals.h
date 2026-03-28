@@ -25,7 +25,7 @@ extern RAWINPUTDEVICE Rid[2];
 extern int mouseCount;
 extern bool detectionPaused;
 extern bool popupShown;
-extern HWND hwndMain, hwndMouseCount, hwndExitButton, hwndStatus;
+extern HWND hwndMain, hwndMouseCount, hwndExitButton, hwndStatus, hwndLiveChartButton;
 extern HWND hwndHeader, hwndDevicesGroup, hwndStatusGroup, hwndListView;
 extern HWND hwndFooterText, hwndLink, hwndTagline;
 extern std::vector<HWND> hwndMouseBoxes;

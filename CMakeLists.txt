@@ -10,6 +10,7 @@ set(SOURCE_FILES
     device_utils.cpp
     detection.cpp
     ui.cpp
+    live_chart.cpp
     resource.rc
 )
 add_executable(DetectMyJiggler WIN32 ${SOURCE_FILES})

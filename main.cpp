@@ -25,6 +25,7 @@
 #include "detection.h"
 #include "globals.h"
 #include "ui.h"
+#include "live_chart.h"
 
 void RegisterDevices(HWND hwnd) {
     Rid[0].usUsagePage = 0x01;
@@ -492,7 +493,11 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
             y += statusGroupH + 8;
 
             int exitBtnW = 80, exitBtnH = 30;
-            int footerTotalH = 24 + 24 + padding; // footer text + link + bottom padding
+            int liveBtnW = 170, liveBtnH = 30;
+            int btnRowH = 30;
+            int linkRowH = 24;
+            int rowGap = 8;
+            int footerTotalH = btnRowH + rowGap + linkRowH + padding; // buttons + gap + link + bottom padding
 
             int devicesGroupH = std::max(120, height - y - footerTotalH - padding);
             if (hwndDevicesGroup) MoveWindow(hwndDevicesGroup, x, y, std::max(0, width - 2*padding), devicesGroupH, TRUE);
@@ -503,12 +508,16 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
             int lvH = std::max(0, devicesGroupH - 42);
             if (hwndListView) MoveWindow(hwndListView, lvX, lvY, lvW, lvH, TRUE);
 
-            // Footer text and link on the bottom-left, exit on the bottom-right
-            int footerY1 = height - padding - 24 - 24;
-            int footerY2 = height - padding - 24;
-            if (hwndFooterText) MoveWindow(hwndFooterText, x, footerY1, std::max(0, width - 2*padding - exitBtnW - 16), 24, TRUE);
-            if (hwndLink) MoveWindow(hwndLink, x, footerY2, std::max(0, width - 2*padding - exitBtnW - 16), 24, TRUE);
-            if (hwndExitButton) MoveWindow(hwndExitButton, width - padding - exitBtnW, height - padding - exitBtnH, exitBtnW, exitBtnH, TRUE);
+            // Footer: buttons and branding text on top row, link on its own row below
+            int btnAreaW = liveBtnW + 12 + exitBtnW;
+            int btnY = height - padding - linkRowH - rowGap - btnRowH;
+            int linkY = height - padding - linkRowH;
+            int footerTextW = std::max(0, width - 2*padding - btnAreaW - 16);
+
+            if (hwndFooterText) MoveWindow(hwndFooterText, x, btnY + (btnRowH - 24) / 2, footerTextW, 24, TRUE);
+            if (hwndLink) MoveWindow(hwndLink, x, linkY, std::max(0, width - 2*padding), linkRowH, TRUE);
+            if (hwndLiveChartButton) MoveWindow(hwndLiveChartButton, width - padding - exitBtnW - 12 - liveBtnW, btnY, liveBtnW, liveBtnH, TRUE);
+            if (hwndExitButton) MoveWindow(hwndExitButton, width - padding - exitBtnW, btnY, exitBtnW, exitBtnH, TRUE);
             return 0;
         }
         case WM_INPUT: {
@@ -674,6 +683,11 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
                             while (mv.size() > maxHistory) {
                                 mv.pop_front();
                             }
+
+                            // Forward to live chart if it is open and recording
+                            if (IsLiveChartActive()) {
+                                LiveChartRecordMovement(deviceHandle, dx, dy);
+                            }
                         }
                     }
                 }
@@ -728,6 +742,8 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
         case WM_COMMAND: {
             if (LOWORD(wParam) == 1) {  // Corrected to handle Exit button
                 DestroyWindow(hwnd);    // Properly close the window
+            } else if (LOWORD(wParam) == 2) {  // Live Mouse Movement button
+                ShowLiveChartWindow(hwnd);
             }
             break;
         }
@@ -930,6 +946,20 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     );
     SendMessage(hwndExitButton, WM_SETFONT, (WPARAM)hFontText, TRUE);
     SetWindowTheme(hwndExitButton, L"Explorer", nullptr);
+
+    hwndLiveChartButton = CreateWindowEx(
+            0,
+            "BUTTON",
+            "Live Mouse Movement",
+            WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
+            304, 392, 170, 30,
+            hwndMain,
+            (HMENU)2,  // ID for the button
+            hInstance,
+            NULL
+    );
+    SendMessage(hwndLiveChartButton, WM_SETFONT, (WPARAM)hFontText, TRUE);
+    SetWindowTheme(hwndLiveChartButton, L"Explorer", nullptr);
 
     RegisterDevices(hwndMain);
 
