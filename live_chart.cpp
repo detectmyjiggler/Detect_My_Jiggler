@@ -72,6 +72,9 @@ struct DeviceTrack {
     std::deque<ChartPoint> points;
     LONG     cumX  = 0;
     LONG     cumY  = 0;
+    LONG     startX = 0;       // Position of the very first recorded point
+    LONG     startY = 0;       // (never changes once set)
+    bool     hasStart = false;  // true after the first point is recorded
     COLORREF color = RGB(255, 255, 255);
     std::string label;
 };
@@ -92,6 +95,10 @@ static HBRUSH s_bgBrush       = nullptr;
 static int    s_nextDeviceNum = 1;
 
 static const size_t MAX_PTS_PER_DEVICE = 10000;
+
+// Rolling window for X/Y time-series charts: once data exceeds this duration,
+// only the most recent portion is shown.
+static const double ROLLING_WINDOW_SECONDS = 15.0 * 60.0;  // 900 seconds
 
 // ── Helpers: coordinate mapping ─────────────────────────────────────────────
 
@@ -182,6 +189,12 @@ static void DrawPathChart(HDC hdc, RECT area, const Snapshot& snap) {
     Range xR, yR;
     bool hasData = false;
     for (auto& [h, t] : snap) {
+        // Include the fixed start position so the start marker is always visible
+        if (t.hasStart) {
+            xR.update((double)t.startX);
+            yR.update((double)(-t.startY));
+            hasData = true;
+        }
         for (auto& pt : t.points) {
             xR.update((double)pt.x);
             yR.update((double)(-pt.y));
@@ -244,10 +257,10 @@ static void DrawPathChart(HDC hdc, RECT area, const Snapshot& snap) {
         SelectObject(hdc, oldPen);
         DeleteObject(pen);
 
-        // Start marker (green dot)
+        // Start marker (green dot) — pinned to original start position
         {
-            int sx = MapX((double)pts.front().x,  xR.lo, xR.hi, pL, pR);
-            int sy = MapY((double)(-pts.front().y), yR.lo, yR.hi, pT, pB);
+            int sx = MapX((double)t.startX,  xR.lo, xR.hi, pL, pR);
+            int sy = MapY((double)(-t.startY), yR.lo, yR.hi, pT, pB);
             HBRUSH br = CreateSolidBrush(COL_START_MKR);
             HPEN mp   = CreatePen(PS_SOLID, 1, COL_START_MKR);
             HBRUSH ob = (HBRUSH)SelectObject(hdc, br);
@@ -324,6 +337,22 @@ static void DrawTimeSeries(HDC hdc, RECT area, const Snapshot& snap,
 
     vR.pad(0.10);
     if (tR.hi <= tR.lo) tR.hi = tR.lo + 1.0;
+
+    // Rolling window: once data exceeds 15 minutes, only show the last 15 min.
+    if (tR.hi - tR.lo > ROLLING_WINDOW_SECONDS) {
+        tR.lo = tR.hi - ROLLING_WINDOW_SECONDS;
+
+        // Recompute value range for only the visible portion of data
+        vR = Range{};
+        for (auto& [h, t] : snap) {
+            for (auto& pt : t.points) {
+                if (pt.elapsed >= tR.lo) {
+                    vR.update((double)(isX ? pt.x : pt.y));
+                }
+            }
+        }
+        vR.pad(0.10);
+    }
 
     // Grid + tick labels
     SetTextColor(hdc, COL_TICK);
@@ -549,6 +578,19 @@ static LRESULT CALLBACK LiveChartProc(HWND hwnd, UINT uMsg,
         }
         return 0;
     }
+    case WM_KEYDOWN: {
+        // Ctrl+R starts recording, Ctrl+P pauses/stops recording
+        if (GetKeyState(VK_CONTROL) & 0x8000) {
+            if (wParam == 'R') {
+                SendMessage(hwnd, WM_COMMAND, IDC_LC_START, 0);
+                return 0;
+            } else if (wParam == 'P') {
+                SendMessage(hwnd, WM_COMMAND, IDC_LC_STOP, 0);
+                return 0;
+            }
+        }
+        break;
+    }
     case WM_DESTROY: {
         KillTimer(hwnd, TIMER_ID);
         s_chartWnd  = nullptr;
@@ -624,6 +666,13 @@ void LiveChartRecordMovement(HANDLE device, LONG dx, LONG dy) {
     auto& track = it->second;
     track.cumX += dx;
     track.cumY += dy;
+
+    // Remember the very first position so the start marker stays fixed.
+    if (!track.hasStart) {
+        track.startX   = track.cumX;
+        track.startY   = track.cumY;
+        track.hasStart = true;
+    }
 
     double elapsed = std::chrono::duration<double>(
         std::chrono::steady_clock::now() - s_startTime).count();

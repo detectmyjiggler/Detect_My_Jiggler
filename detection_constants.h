@@ -8,7 +8,7 @@
 // Detection constants
 const double CONTINUOUS_THRESHOLD_SECONDS = 30.0;
 const double PAUSE_THRESHOLD_SECONDS = 2.0;
-const double MIN_DETECTION_SECONDS = 5.0;  // Wait at least 5 seconds of data before detecting any mode
+const double MIN_DETECTION_SECONDS = 10.0;  // Wait at least 10 seconds of data before detecting any mode
 const size_t MIN_SPEED_SAMPLES = 12;
 const double SPEED_CV_THRESHOLD = 0.15; // 15% coefficient of variation
 const size_t MIN_PATTERN_HISTORY = 50;
@@ -60,7 +60,7 @@ const double MIN_SIGN_VARIANCE = 1e-10;         // Minimum variance for sign ana
 // straight-line movement) is observed.  The movement gate below must stay within
 // the movements-deque cap (200) so that detection is always reachable.
 const size_t PRIMARY_MOUSE_MIN_MOVEMENTS = 60;   // Must be <= movements-deque cap (200); detectors have own per-window minimums
-const double PRIMARY_MOUSE_MIN_DETECTION_SECONDS = 10.0; // Initial observation window; confirmation cycles add 3-5s more
+const double PRIMARY_MOUSE_MIN_DETECTION_SECONDS = 20.0; // Initial observation window; confirmation cycles add 3-5s more
 const int PRIMARY_MOUSE_CONFIRMATION_CYCLES = 25;  // ~5s at 200ms/cycle
 const size_t PRIMARY_MOUSE_MIN_ARC_HISTORY = 8;  // Require multiple arc windows
 const size_t PRIMARY_MOUSE_MIN_SIMILAR_RADIUS_HITS = 5; // "Couple of times" radius repeats

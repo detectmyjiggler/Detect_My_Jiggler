@@ -746,6 +746,14 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
             }
             break;
         }
+        case WM_KEYDOWN: {
+            // Ctrl+L opens the Live Mouse Movement chart window
+            if (wParam == 'L' && (GetKeyState(VK_CONTROL) & 0x8000)) {
+                ShowLiveChartWindow(hwnd);
+                return 0;
+            }
+            break;
+        }
         case WM_COMMAND: {
             if (LOWORD(wParam) == 1) {  // Corrected to handle Exit button
                 DestroyWindow(hwnd);    // Properly close the window

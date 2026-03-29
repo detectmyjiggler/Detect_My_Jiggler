@@ -37,10 +37,53 @@ const int CUSTOM_POPUP_REASON_ID = 1004;
 const int TOUCHPAD_HELP_MSG_ID = 1101;
 const int TOUCHPAD_BTN_USE_MOUSE_ID = 1102;
 const int TOUCHPAD_BTN_NO_MOUSE_ID = 1103;
-const char* DETECTION_INFO_MESSAGE = 
-    "A mouse jiggler has been detected on your system.\n\n"
-    "We use advanced algorithms to detect automated mouse movements including repetitive patterns, constant speeds, and circular motions.\n\n"
-    "This detection helps ensure genuine user activity on your system.";
+// Build a popup message that describes only the specific pattern detected.
+static std::string BuildDetectionInfoMessage(DetectionType type) {
+    std::string patternName;
+    switch (type) {
+        case DetectionType::CIRCULAR_PATTERN:
+        case DetectionType::CIRCULAR_ARC_PATTERN:
+            patternName = "circular motion";
+            break;
+        case DetectionType::OSCILLATION_PATTERN:
+            patternName = "oscillating movement";
+            break;
+        case DetectionType::ZIGZAG_PATTERN:
+            patternName = "linear zigzag/sawtooth movement";
+            break;
+        case DetectionType::GEOMETRIC_PATTERN:
+            patternName = "geometric movement";
+            break;
+        case DetectionType::ALTERNATING_PATTERN:
+            patternName = "alternating direction movement";
+            break;
+        case DetectionType::CONSTANT_DELTA:
+            patternName = "constant pixel-step movement";
+            break;
+        case DetectionType::CONSTANT_SPEED:
+            patternName = "constant speed movement";
+            break;
+        case DetectionType::LARGE_REPETITIVE_MOVEMENT:
+            patternName = "repetitive movement";
+            break;
+        case DetectionType::CONTINUOUS_MOVEMENT:
+            patternName = "continuous movement without pause";
+            break;
+        case DetectionType::REPETITIVE_DELTA:
+            patternName = "repetitive micro-delta movement";
+            break;
+        case DetectionType::SMALL_MOVEMENT:
+            patternName = "small repetitive movement";
+            break;
+        default:
+            patternName = "automated mouse movement";
+            break;
+    }
+
+    return "A mouse jiggler has been detected on your system.\n\n"
+           "Our detection algorithm identified a " + patternName + " pattern consistent with an automated mouse mover.\n\n"
+           "This detection helps ensure genuine user activity on your system.";
+}
 const char* CALIBRATION_NEUTRAL_MESSAGE =
     "Click OK to start jiggler detection.";
 
@@ -132,8 +175,9 @@ LRESULT CALLBACK CustomPopupProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPa
                 100, 65, 360, 40, hwnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(CUSTOM_POPUP_REASON_ID)), NULL, NULL);
             SendMessage(hwndReason, WM_SETFONT, (WPARAM)hReasonFont, TRUE);
             
-            // Message
-            HWND hwndMsg = CreateWindowEx(0, "STATIC", DETECTION_INFO_MESSAGE,
+            // Message - specific to the detected pattern
+            std::string infoMsg = BuildDetectionInfoMessage(currentDetection.type);
+            HWND hwndMsg = CreateWindowEx(0, "STATIC", infoMsg.c_str(),
                 WS_CHILD | WS_VISIBLE,
                 100, 110, 360, 155, hwnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(CUSTOM_POPUP_MSG_ID)), NULL, NULL);
             SendMessage(hwndMsg, WM_SETFONT, (WPARAM)hTextFont, TRUE);
