@@ -27,23 +27,27 @@
 #include "live_chart.h"
 
 // ── Colour palette ──────────────────────────────────────────────────────────
-static const COLORREF BG_DARK       = RGB(15, 15, 26);
-static const COLORREF BG_PANEL      = RGB(26, 26, 46);
-static const COLORREF COL_GRID      = RGB(51, 51, 85);
-static const COLORREF COL_TICK      = RGB(170, 170, 204);
-static const COLORREF COL_TITLE     = RGB(255, 255, 255);
-static const COLORREF COL_START_MKR = RGB(0, 255, 136);
-static const COLORREF COL_END_MKR   = RGB(255, 68, 102);
+// "Motion Forensics" instrument paper — matches the hero plot on
+// detectmyjiggler.com: warm paper surface, faint grid, ink annotations,
+// green = human/start, rust = jiggler/end.
+static const COLORREF BG_DARK       = RGB(239, 237, 228); // paper   #EFEDE4
+static const COLORREF BG_PANEL      = RGB(251, 250, 245); // surface #FBFAF5
+static const COLORREF COL_GRID      = RGB(214, 212, 202); // faint warm grid
+static const COLORREF COL_TICK      = RGB(139, 141, 126); // ink-3 axis labels
+static const COLORREF COL_TITLE     = RGB( 27,  29,  22); // ink titles
+static const COLORREF COL_START_MKR = RGB( 47, 106,  76); // signal green — start
+static const COLORREF COL_END_MKR   = RGB(177,  77,  44); // flag rust   — end
 
+// Per-device trace colours, harmonised with the warm light theme.
 static const COLORREF DEVICE_PALETTE[] = {
-    RGB(79, 195, 247),   // Light blue
-    RGB(244, 143, 177),  // Pink
-    RGB(129, 199, 132),  // Green
-    RGB(255, 183, 77),   // Orange
-    RGB(186, 104, 200),  // Purple
-    RGB(255, 241, 118),  // Yellow
-    RGB(128, 222, 234),  // Cyan
-    RGB(255, 138, 128),  // Coral
+    RGB(177,  77,  44),  // rust
+    RGB( 47, 106,  76),  // green
+    RGB(138, 106,  34),  // amber
+    RGB( 58,  92, 120),  // steel blue
+    RGB(122,  80, 120),  // plum
+    RGB( 90, 110,  80),  // sage
+    RGB(160,  96,  56),  // terracotta
+    RGB( 70,  96, 100),  // slate
 };
 static const int NUM_PALETTE = sizeof(DEVICE_PALETTE) / sizeof(DEVICE_PALETTE[0]);
 
@@ -75,7 +79,7 @@ struct DeviceTrack {
     LONG     startX = 0;       // Position of the very first recorded point
     LONG     startY = 0;       // (never changes once set)
     bool     hasStart = false;  // true after the first point is recorded
-    COLORREF color = RGB(255, 255, 255);
+    COLORREF color = RGB(27, 29, 22);   // ink fallback (overwritten from palette)
     std::string label;
 };
 
@@ -410,15 +414,17 @@ static LRESULT CALLBACK LiveChartProc(HWND hwnd, UINT uMsg,
                                       WPARAM wParam, LPARAM lParam) {
     switch (uMsg) {
     case WM_CREATE: {
-        s_fontTitle = CreateFont(-14, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
+        // Segoe UI for panel titles (display); Consolas for the mono
+        // "instrument voice" on tick labels, legend, and status readout.
+        s_fontTitle = CreateFont(-14, 0, 0, 0, FW_SEMIBOLD, FALSE, FALSE, FALSE,
             DEFAULT_CHARSET, OUT_OUTLINE_PRECIS, CLIP_DEFAULT_PRECIS,
-            CLEARTYPE_QUALITY, VARIABLE_PITCH, "Segoe UI");
-        s_fontLabel = CreateFont(-13, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
+            CLEARTYPE_QUALITY, VARIABLE_PITCH, "Segoe UI Semibold");
+        s_fontLabel = CreateFont(-13, 0, 0, 0, FW_MEDIUM, FALSE, FALSE, FALSE,
             DEFAULT_CHARSET, OUT_OUTLINE_PRECIS, CLIP_DEFAULT_PRECIS,
-            CLEARTYPE_QUALITY, VARIABLE_PITCH, "Segoe UI");
+            CLEARTYPE_QUALITY, FIXED_PITCH | FF_MODERN, "Consolas");
         s_fontSmall = CreateFont(-11, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
             DEFAULT_CHARSET, OUT_OUTLINE_PRECIS, CLIP_DEFAULT_PRECIS,
-            CLEARTYPE_QUALITY, VARIABLE_PITCH, "Segoe UI");
+            CLEARTYPE_QUALITY, FIXED_PITCH | FF_MODERN, "Consolas");
         s_bgBrush = CreateSolidBrush(BG_DARK);
 
         s_btnStart = CreateWindowEx(0, "BUTTON", "Start",
@@ -552,9 +558,9 @@ static LRESULT CALLBACK LiveChartProc(HWND hwnd, UINT uMsg,
 
         DrawPathChart(memDC, pathArea, snap);
         DrawTimeSeries(memDC, xArea, snap, true,
-                       "X Position Over Time", RGB(79, 195, 247));
+                       "X Position Over Time", RGB(58, 92, 120));   // steel blue
         DrawTimeSeries(memDC, yArea, snap, false,
-                       "Y Position Over Time", RGB(244, 143, 177));
+                       "Y Position Over Time", RGB(122, 80, 120));  // plum
 
         BitBlt(hdc, 0, 0, w, h, memDC, 0, 0, SRCCOPY);
 
@@ -628,7 +634,7 @@ void ShowLiveChartWindow(HWND parent) {
         wc.lpfnWndProc  = LiveChartProc;
         wc.hInstance     = GetModuleHandle(NULL);
         wc.lpszClassName = "LiveMouseChartWindow";
-        wc.hbrBackground = (HBRUSH)GetStockObject(BLACK_BRUSH);
+        wc.hbrBackground = (HBRUSH)(COLOR_WINDOW + 1); // light; real paint in WM_ERASEBKGND
         wc.style         = CS_HREDRAW | CS_VREDRAW;
         RegisterClass(&wc);
         registered = true;

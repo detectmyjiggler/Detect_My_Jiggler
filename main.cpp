@@ -27,6 +27,69 @@
 #include "ui.h"
 #include "live_chart.h"
 
+// Surface brush for the status text background so it blends into its panel card.
+static HBRUSH hCardBrush = nullptr;
+
+// Custom-paint a BS_GROUPBOX as a site-style "instrument panel": a green mono
+// kicker label sitting above a bordered surface card.  The default themed
+// group-box border is invisible against the warm paper, so we draw our own.
+static LRESULT CALLBACK PanelSubclassProc(HWND hwnd, UINT msg, WPARAM wParam,
+                                          LPARAM lParam, UINT_PTR uId, DWORD_PTR ref) {
+    switch (msg) {
+        case WM_SIZE:
+            InvalidateRect(hwnd, nullptr, TRUE);
+            break;
+        case WM_ERASEBKGND:
+            return 1; // fully painted in WM_PAINT
+        case WM_PAINT: {
+            PAINTSTRUCT ps;
+            HDC hdc = BeginPaint(hwnd, &ps);
+            RECT rc; GetClientRect(hwnd, &rc);
+
+            char title[64] = {0};
+            GetWindowTextA(hwnd, title, sizeof(title) - 1);
+
+            const int kickerH = 20;
+            RECT strip = { rc.left, rc.top, rc.right, rc.top + kickerH };
+            RECT card  = { rc.left, rc.top + kickerH, rc.right, rc.bottom };
+
+            // Kicker strip blends with the paper window background.
+            HBRUSH paper = CreateSolidBrush(gPaperColor);
+            FillRect(hdc, &strip, paper);
+            DeleteObject(paper);
+
+            // Surface card fill.
+            HBRUSH surf = CreateSolidBrush(gSurfaceColor);
+            FillRect(hdc, &card, surf);
+            DeleteObject(surf);
+
+            // 1px card border (rounded, like the site's panels).
+            HPEN pen = CreatePen(PS_SOLID, 1, gLineColor);
+            HPEN op  = (HPEN)SelectObject(hdc, pen);
+            HBRUSH ob = (HBRUSH)SelectObject(hdc, (HBRUSH)GetStockObject(NULL_BRUSH));
+            RoundRect(hdc, card.left, card.top, card.right - 1, card.bottom - 1, 6, 6);
+            SelectObject(hdc, ob);
+            SelectObject(hdc, op);
+            DeleteObject(pen);
+
+            // Green mono kicker title.
+            SetBkMode(hdc, TRANSPARENT);
+            SetTextColor(hdc, gSignalColor);
+            HFONT of = (HFONT)SelectObject(hdc, hFontMono ? hFontMono : hFontText);
+            RECT tr = { rc.left + 2, rc.top, rc.right, rc.top + kickerH };
+            DrawTextA(hdc, title, -1, &tr, DT_LEFT | DT_SINGLELINE | DT_VCENTER);
+            SelectObject(hdc, of);
+
+            EndPaint(hwnd, &ps);
+            return 0;
+        }
+        case WM_NCDESTROY:
+            RemoveWindowSubclass(hwnd, PanelSubclassProc, uId);
+            break;
+    }
+    return DefSubclassProc(hwnd, msg, wParam, lParam);
+}
+
 void RegisterDevices(HWND hwnd) {
     Rid[0].usUsagePage = 0x01;
     Rid[0].usUsage = 0x02;
@@ -46,11 +109,21 @@ void RegisterDevices(HWND hwnd) {
 
 void UpdateMouseCount(size_t externalCount, size_t ignoredCount) {
     std::ostringstream oss;
-    oss << "Number of Mice Connected: " << externalCount;
+    oss << "MICE CONNECTED: " << externalCount;
     if (ignoredCount > 0) {
-        oss << "  (ignored touchpads: " << ignoredCount << ")";
+        oss << "   //   IGNORED TOUCHPADS: " << ignoredCount;
     }
     SetWindowText(hwndMouseCount, oss.str().c_str());
+
+    // The control now has a transparent background, so repaint the grid behind
+    // it (the parent has no WS_CLIPCHILDREN) to clear any leftover old text.
+    HWND parent = GetParent(hwndMouseCount);
+    if (parent) {
+        RECT rc;
+        GetWindowRect(hwndMouseCount, &rc);
+        MapWindowPoints(HWND_DESKTOP, parent, reinterpret_cast<LPPOINT>(&rc), 2);
+        InvalidateRect(parent, &rc, TRUE);
+    }
 }
 
 void DisplayMouseInfo() {
@@ -423,7 +496,7 @@ void DetectMouseJiggler() {
         currentDetection.type = DetectionType::NONE;
         currentDetection.reason = "Monitoring... No Jiggler Detected";
         SetWindowText(hwndStatus, currentDetection.reason.c_str());
-        gStatusColor = RGB(34, 139, 34);
+        gStatusColor = gSignalColor;
     }
 }
 
@@ -447,26 +520,27 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
             SetBkMode(hdc, TRANSPARENT);
             if (hCtrl == hwndStatus) {
                 SetTextColor(hdc, gStatusColor);
+                if (hCardBrush) return (LRESULT)hCardBrush; // blend into the panel card
             } else if (hCtrl == hwndTagline) {
                 SetTextColor(hdc, gAccentColor);
             } else if (hCtrl == hwndHeader) {
-                SetTextColor(hdc, RGB(255, 255, 255));
+                SetTextColor(hdc, gInkColor);       // dark ink wordmark on paper
+            } else if (hCtrl == hwndMouseCount || hCtrl == hwndFooterText) {
+                SetTextColor(hdc, gInk3Color);      // muted mono annotation voice
             } else {
-                SetTextColor(hdc, RGB(20, 24, 44));
+                SetTextColor(hdc, gInk2Color);
             }
-            if (hCtrl == hwndHeader || hCtrl == hwndTagline) {
-                return (LRESULT)GetStockObject(NULL_BRUSH);
-            }
-            if (hBgBrush) return (LRESULT)hBgBrush;
-            break;
+            // Transparent background for all text on the paper area so the grid
+            // shows through continuously — no flat rectangular patches behind text.
+            return (LRESULT)GetStockObject(NULL_BRUSH);
         }
         case WM_CTLCOLORBTN: {
             HDC hdc = (HDC)wParam;
             SetBkMode(hdc, TRANSPARENT);
             if ((HWND)lParam == hwndStatusGroup || (HWND)lParam == hwndDevicesGroup) {
-                SetTextColor(hdc, gAccentColor);
+                SetTextColor(hdc, gAccentColor);    // green "kicker" group labels
             } else {
-                SetTextColor(hdc, RGB(20, 24, 44));
+                SetTextColor(hdc, gInkColor);
             }
             if (hBgBrush) return (LRESULT)hBgBrush;
             break;
@@ -478,7 +552,7 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
 
             int x = padding;
             int y = 10;
-            int headerH = 32;
+            int headerH = 44; // tall enough that the 28px wordmark's descenders (y, g, j) aren't clipped
             if (hwndHeader) MoveWindow(hwndHeader, x, y, std::max(0, width - 2*padding), headerH, TRUE);
 
             y += headerH + 12;
@@ -501,11 +575,11 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
 
             int devicesGroupH = std::max(120, height - y - footerTotalH - padding);
             if (hwndDevicesGroup) MoveWindow(hwndDevicesGroup, x, y, std::max(0, width - 2*padding), devicesGroupH, TRUE);
-            // ListView inside the group box with padding
+            // ListView inside the panel card (kicker strip ~20px, then margins)
             int lvX = x + 16;
-            int lvY = y + 26;
+            int lvY = y + 32;
             int lvW = std::max(0, width - 2*padding - 32);
-            int lvH = std::max(0, devicesGroupH - 42);
+            int lvH = std::max(0, devicesGroupH - 50);
             if (hwndListView) MoveWindow(hwndListView, lvX, lvY, lvW, lvH, TRUE);
 
             // Footer: buttons and branding text on top row, link on its own row below
@@ -799,7 +873,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     hwndMain = CreateWindowEx(
             0,
             "RawInputClass",
-            "Mouse Jiggler Detection",
+            "Detect My Jiggler",
             WS_OVERLAPPEDWINDOW,
             CW_USEDEFAULT, CW_USEDEFAULT, 720, 560,
             NULL,
@@ -813,11 +887,13 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
         return -1;
     }
 
-    // Create fonts
+    // Create fonts.  Segoe UI stands in for the site's Space Grotesk (display)
+    // and Hanken Grotesk (body); Consolas provides the IBM Plex Mono
+    // "instrument voice" used for labels, counts, and buttons.
     hFontTitle = CreateFont(
-            -26, 0, 0, 0, FW_SEMIBOLD, FALSE, FALSE, FALSE,
+            -28, 0, 0, 0, FW_SEMIBOLD, FALSE, FALSE, FALSE,
             DEFAULT_CHARSET, OUT_OUTLINE_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY,
-            VARIABLE_PITCH, "Segoe UI");
+            VARIABLE_PITCH, "Segoe UI Semibold");
     hFontSubtitle = CreateFont(
             -16, 0, 0, 0, FW_MEDIUM, FALSE, FALSE, FALSE,
             DEFAULT_CHARSET, OUT_OUTLINE_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY,
@@ -826,17 +902,23 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
             -14, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
             DEFAULT_CHARSET, OUT_OUTLINE_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY,
             VARIABLE_PITCH, "Segoe UI");
+    hFontMono = CreateFont(
+            -13, 0, 0, 0, FW_MEDIUM, FALSE, FALSE, FALSE,
+            DEFAULT_CHARSET, OUT_OUTLINE_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY,
+            FIXED_PITCH | FF_MODERN, "Consolas");
 
-    // Background brush
+    // Background brush (paper) for static control backgrounds; card brush
+    // (surface) for content that sits inside an instrument panel.
     hBgBrush = CreateSolidBrush(gPanelColor);
+    hCardBrush = CreateSolidBrush(gSurfaceColor);
 
-    // Header
+    // Header / wordmark
     hwndHeader = CreateWindowEx(
             0,
             "STATIC",
-            "Mouse Jiggler Detection",
+            "Detect My Jiggler",
             WS_CHILD | WS_VISIBLE,
-            16, 10, 400, 32,
+            16, 10, 400, 36,
             hwndMain,
             NULL,
             hInstance,
@@ -847,7 +929,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     hwndMouseCount = CreateWindowEx(
             0,
             "STATIC",
-            "Number of Mice Connected: 0",
+            "MICE CONNECTED: 0",
             WS_CHILD | WS_VISIBLE,
             16, 52, 300, 24,
             hwndMain,
@@ -855,12 +937,12 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
             hInstance,
             NULL
     );
-    SendMessage(hwndMouseCount, WM_SETFONT, (WPARAM)hFontText, TRUE);
+    SendMessage(hwndMouseCount, WM_SETFONT, (WPARAM)hFontMono, TRUE);
 
     hwndStatusGroup = CreateWindowEx(
             0,
             "BUTTON",
-            "Detection Status",
+            "DETECTION STATUS",
             WS_CHILD | WS_VISIBLE | BS_GROUPBOX,
             16, 78, 560, 80,
             hwndMain,
@@ -868,7 +950,8 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
             hInstance,
             NULL
     );
-    SendMessage(hwndStatusGroup, WM_SETFONT, (WPARAM)hFontText, TRUE);
+    SendMessage(hwndStatusGroup, WM_SETFONT, (WPARAM)hFontMono, TRUE);
+    SetWindowSubclass(hwndStatusGroup, PanelSubclassProc, 1, 0);
 
     hwndStatus = CreateWindowEx(
             0,
@@ -886,7 +969,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     hwndDevicesGroup = CreateWindowEx(
             0,
             "BUTTON",
-            "Connected Devices",
+            "CONNECTED DEVICES",
             WS_CHILD | WS_VISIBLE | BS_GROUPBOX,
             16, 166, 560, 230,
             hwndMain,
@@ -894,10 +977,11 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
             hInstance,
             NULL
     );
-    SendMessage(hwndDevicesGroup, WM_SETFONT, (WPARAM)hFontText, TRUE);
+    SendMessage(hwndDevicesGroup, WM_SETFONT, (WPARAM)hFontMono, TRUE);
+    SetWindowSubclass(hwndDevicesGroup, PanelSubclassProc, 1, 0);
 
     hwndListView = CreateWindowEx(
-            WS_EX_CLIENTEDGE,
+            0,  // no sunken edge — the panel card provides the frame
             WC_LISTVIEW,
             "",
             WS_CHILD | WS_VISIBLE | LVS_REPORT | LVS_SINGLESEL | LVS_SHOWSELALWAYS,
@@ -907,7 +991,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
             hInstance,
             NULL
     );
-    SendMessage(hwndListView, WM_SETFONT, (WPARAM)hFontText, TRUE);
+    SendMessage(hwndListView, WM_SETFONT, (WPARAM)hFontMono, TRUE);
     ListView_SetExtendedListViewStyle(hwndListView, LVS_EX_FULLROWSELECT | LVS_EX_GRIDLINES | LVS_EX_DOUBLEBUFFER);
     // Apply Explorer theme for a modern look
     SetWindowTheme(hwndListView, L"Explorer", nullptr);
@@ -923,7 +1007,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     hwndLink = CreateWindowEx(
             0,
             "SysLink",
-            "Learn more about mouse jiggler detection algorithms. <a href=\"https://detectmyjiggler.com\">Visit detectmyjiggler.com</a>.",
+            "Real-time HID behavioral analysis. <a href=\"https://detectmyjiggler.com\">Learn more at detectmyjiggler.com</a>.",
             WS_CHILD | WS_VISIBLE | WS_TABSTOP,
             16, 416, 560, 24,
             hwndMain,
@@ -938,7 +1022,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     hwndFooterText = CreateWindowEx(
             0,
             "STATIC",
-            "Mouse Jiggler Detector - Open Source Project",
+            "OPEN-SOURCE JIGGLER DETECTION  //  MIT LICENSED",
             WS_CHILD | WS_VISIBLE,
             16, 392, 360, 24,
             hwndMain,
@@ -946,12 +1030,12 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
             hInstance,
             NULL
     );
-    SendMessage(hwndFooterText, WM_SETFONT, (WPARAM)hFontText, TRUE);
+    SendMessage(hwndFooterText, WM_SETFONT, (WPARAM)hFontMono, TRUE);
 
     hwndExitButton = CreateWindowEx(
             0,
             "BUTTON",
-            "Exit",
+            "EXIT",
             WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
             496, 392, 80, 30,
             hwndMain,
@@ -959,13 +1043,13 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
             hInstance,
             NULL
     );
-    SendMessage(hwndExitButton, WM_SETFONT, (WPARAM)hFontText, TRUE);
+    SendMessage(hwndExitButton, WM_SETFONT, (WPARAM)hFontMono, TRUE);
     SetWindowTheme(hwndExitButton, L"Explorer", nullptr);
 
     hwndLiveChartButton = CreateWindowEx(
             0,
             "BUTTON",
-            "Live Mouse Movement",
+            "LIVE MOUSE MOVEMENT",
             WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
             304, 392, 170, 30,
             hwndMain,
@@ -973,7 +1057,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
             hInstance,
             NULL
     );
-    SendMessage(hwndLiveChartButton, WM_SETFONT, (WPARAM)hFontText, TRUE);
+    SendMessage(hwndLiveChartButton, WM_SETFONT, (WPARAM)hFontMono, TRUE);
     SetWindowTheme(hwndLiveChartButton, L"Explorer", nullptr);
 
     RegisterDevices(hwndMain);
@@ -983,7 +1067,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 
     // Show calibration popup to identify the primary mouse before detection starts
     SetWindowText(hwndStatus, "Waiting for mouse calibration...");
-    gStatusColor = RGB(90, 102, 255); // Blue during calibration
+    gStatusColor = gWarnColor; // Amber during calibration
     InvalidateRect(hwndMain, NULL, TRUE);
     ShowCalibrationPopup(hwndMain);
 
@@ -991,17 +1075,17 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     if (primaryMouseIdentified) {
         std::string calibMsg = "Primary mouse identified - Monitoring...";
         SetWindowText(hwndStatus, calibMsg.c_str());
-        gStatusColor = RGB(34, 139, 34);
+        gStatusColor = gSignalColor;
     } else {
         if (primaryMouseSelectionDisabled) {
             SetWindowText(hwndStatus, "Monitoring... No primary mouse (touchpad-only mode).");
-            gStatusColor = RGB(34, 139, 34);
+            gStatusColor = gSignalColor;
         } else if (calibrationIgnoredTouchpad) {
             SetWindowText(hwndStatus, "Touchpad ignored. Move/click external mouse to set primary.");
-            gStatusColor = RGB(90, 102, 255);
+            gStatusColor = gWarnColor;
         } else {
             SetWindowText(hwndStatus, "Monitoring... No Jiggler Detected");
-            gStatusColor = RGB(34, 139, 34);
+            gStatusColor = gSignalColor;
         }
     }
     InvalidateRect(hwndMain, NULL, TRUE);
@@ -1023,7 +1107,9 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     if (hFontTitle) DeleteObject(hFontTitle);
     if (hFontSubtitle) DeleteObject(hFontSubtitle);
     if (hFontText) DeleteObject(hFontText);
+    if (hFontMono) DeleteObject(hFontMono);
     if (hBgBrush) DeleteObject(hBgBrush);
+    if (hCardBrush) DeleteObject(hCardBrush);
 
     return 0;
 }
